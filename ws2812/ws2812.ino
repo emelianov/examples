@@ -10,9 +10,13 @@
 #include <Run.h>
 #include <NeoPixelBus.h>
 
+//Pixel count for Example 1
 #define PIXELS 16
+// Maximum brightness 0 - 255. Sure value below doesn't make sence.
 #define BRI 24
+// Board width for Example 2
 #define H 4
+// Board width for Example 2
 #define W 4
 
 NeoPixelBus<NeoGrbFeature, NeoEsp8266Dma800KbpsMethod>* strip;
@@ -107,6 +111,7 @@ uint32_t switchColor() {
   uint8_t newG = random(brightness);
   uint8_t newB = random(brightness);
   uint8_t rnd = random(100);
+  // Amplify one color
   if (rnd > 66) {
     newR *= 3;
   } else if (rnd > 33) {
@@ -183,14 +188,14 @@ void setup()
 {
   // Uncomment one of examples
   // Example 1
-  taskAdd(randomOn);
-  taskAdd(randomOff);
+  // taskAdd(randomOn);
+  // taskAdd(randomOff);
   // End of Example 1
   
   // Example 2
-  //taskAddWithSemaphore(go,  &flagGo);
-  //taskAddWithSemaphore(switchColor,  &flagSwitchColor);
-  //taskAddWithSemaphore(shiftColor,  &flagShiftColor);
+  taskAddWithSemaphore(go,  &flagGo);
+  taskAddWithSemaphore(switchColor,  &flagSwitchColor);
+  taskAddWithSemaphore(shiftColor,  &flagShiftColor);
   // End of Example 2
   taskAdd(show);
   taskAdd(setBri);
