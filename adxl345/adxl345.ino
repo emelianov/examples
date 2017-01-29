@@ -37,7 +37,7 @@ handlers call = {0, 0};
 
 #define BUTTON_INTR 0
 
-#define ADXL_INTR 	14
+#define ADXL_INTR 	12
 #define ADXL_HISTORY	20
 ADXL345 adxl;
 
