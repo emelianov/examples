@@ -13,7 +13,10 @@
 #include <Run.h>
 #include <ADXL345.h>
 #include <LiquidCrystal_I2C.h>
-#include <LCDBitmap.h>
+#include <NeoPixelBus.h>
+
+#define MIN_ANGLE 30
+#define MIN_ACT 100
 
 #define PIN_ACT       D4  //Net LED
 #define PIN_ALERT     D0  //16
@@ -22,22 +25,50 @@
 #define ALERT         digitalWrite(PIN_ALERT, LOW);
 #define NOALERT       digitalWrite(PIN_ALERT, HIGH);
 
+// Maximum brightness 0 - 255. Sure value below doesn't make sence.
+#define BRI 24
+// Board height
+#define H 4
+// Board width
+#define W 4
+NeoPixelBus<NeoGrbFeature, NeoEsp8266Dma800KbpsMethod>* strip;
+typedef ColumnMajorAlternatingLayout MyPanelLayout;
+typedef ColumnMajorLayout MyTilesLayout;
+NeoTiles <MyPanelLayout, MyTilesLayout>* tiles;
+
+class BriColor : public RgbColor {
+  public:
+  BriColor(uint8_t r, uint8_t g, uint8_t b, uint8_t bri) {
+    uint16_t s = r + g + b;
+    if ( s > 0) {
+      R = (uint32_t)r * (uint32_t)bri / s;
+      G = (uint32_t)g * (uint32_t)bri / s;
+      B = (uint32_t)b * (uint32_t)bri / s;
+    }
+
+  }
+};
+RgbColor black(0, 0, 0);
+
+uint8_t brightness = BRI;
+
 // Display I2C address
 #define LCD_I2C 0x27
 #define LCD_W	16
 #define LCD_H	2
 LiquidCrystal_I2C lcd(LCD_I2C, LCD_W, LCD_H);
-LCDBitmap bitmap(&lcd, 12, 0); // 20x16 bitmap
+
 
 struct handlers {
  uint16_t adxlHandler;
  uint16_t adxlZerroHandler;
+ uint16_t display;
 };
-handlers call = {0, 0};
+handlers call = {0, 0, 0};
 
 #define BUTTON_INTR 0
 
-#define ADXL_INTR 	14
+#define ADXL_INTR 	0
 #define ADXL_HISTORY	20
 ADXL345 adxl;
 
@@ -52,7 +83,11 @@ uint16_t adxlHistory[ADXL_HISTORY];
 uint8_t adxlHistoryPos = 0;
 uint16_t adxlHistoryMax = 0;
 
-#define DELTA 1000
+int16_t bx = 2;
+int16_t by = 2; 
+BriColor bc(64, 0, 0, BRI);
+uint32_t xAction = 0;
+uint32_t yAction = 0;
 
 void adxlIntr() {
  call.adxlHandler++;
@@ -70,66 +105,74 @@ uint32_t movementHandler() {
   int16_t x,y,z;
   adxl.readAccel(&adxlLast.x, &adxlLast.y, &adxlLast.z);
   byte interrupts = adxl.getInterruptSource();
-  /*
-  int16_t val = abs(x - adxlLast.x) + abs(y - adxlLast.y) + abs(z - adxlLast.z);
-  if (val > adxlHistoryMax) {
-    adxlHistoryMax = val;
-  }
-  if (val > adxlHistory[adxlHistoryPos]) {
-    adxlHistory[adxlHistoryPos] = val;
-  } */
+  x = adxlLast.x - adxlZerro.x;
+  y = adxlLast.y - adxlZerro.y;
+  z = adxlLast.z - adxlZerro.z;
   lcd.setCursor(0,0);
   lcd.print("                ");
   lcd.setCursor(0,0);
-  lcd.print(adxlLast.x - adxlZerro.x);
+  lcd.print(x);
   lcd.print(" ");
-  lcd.print(adxlLast.y - adxlZerro.y);
+  lcd.print(y);
   lcd.print(" ");
-  lcd.print(adxlLast.z - adxlZerro.z);
-  IDLE
+  lcd.print(z);
+  if (abs(x) > MIN_ANGLE) {
+    if (xAction != 0)  {
+      if (millis() - xAction > MIN_ACT) {
+        bx += signbit(x);
+        if (bx < 0) bx = 0;
+        if (bx >= W) bx = W - 1;
+      }
+    } else {
+      xAction = millis();
+    }
+  } else {
+    xAction = 0;
+  }
+  if (abs(y) > MIN_ANGLE) {
+    if (yAction != 0)  {
+      if (millis() - yAction > MIN_ACT) {
+        bx += signbit(y);
+        if (by < 0) by = 0;
+        if (by >= W) by = W - 1;
+      }
+    } else {
+      yAction = millis();
+    }
+  } else {
+    yAction = 0;
+  }  IDLE
+  call.display++;
   return RUN_NEVER;
 }
 
-uint32_t displayHandler() {
-  return DELTA;
-  uint16_t scale = adxlHistoryMax >> 4;
-  if (scale == 0) scale = 1;
-   bitmap.clear();
-  for (uint8_t i = adxlHistoryPos ; ;) {
-   bitmap.pixel(i, adxlHistory[i] / scale, ON);
-//   lcd.setCursor(0,0);
-//   lcd.print(adxlHistory[i] / scale);
-   i++;
-   if (i > ADXL_HISTORY) {
-     i = 0;
-   }
-   if (i == adxlHistoryPos) {
-     break;
-   }
-   bitmap.pixel(i, 0, ON);
-  }
-  bitmap.update();
-  adxlHistoryPos++;
-  if (adxlHistoryPos > ADXL_HISTORY) {
-   adxlHistoryPos = 0;
-  }
-//  bitmap.pixel(adxlHistoryPos, 1, ON);
-//  bitmap.update();
-//  adxlHistoryPos++;
-//  if (adxlHistoryPos > ADXL_HISTORY) return RUN_DELETE;
-  return DELTA;
+uint32_t display() {
+  strip->ClearTo(black);
+  strip->SetPixelColor(tiles->Map(bx, by), bc);
+  strip->Show();
+  return 100;
 }
 
 void setup()
 {
+    const uint8_t PanelWidth = W;
+    const uint8_t PanelHeight = H;
+    const uint8_t TileWidth = 1;
+    const uint8_t TileHeight = 1;
+    const uint16_t PixelCount = PanelWidth * PanelHeight * TileWidth * TileHeight;
+
+    tiles = new NeoTiles <MyPanelLayout, MyTilesLayout> (PanelWidth,PanelHeight, TileWidth, TileHeight);
+    strip = new NeoPixelBus<NeoGrbFeature, NeoEsp8266Dma800KbpsMethod> (PixelCount);
+  //  strip->Begin();
+  //  strip->ClearTo(black);
+  //  strip->Show();
+  
   Wire.begin();
   lcd.begin();
-  bitmap.begin();
-  bitmap.home();
   adxl.powerOn();
   adxl.setRangeSetting(2);
-  adxl.setActivityThreshold(3); // 75?
-  adxl.setInactivityThreshold(3); // 75?
+  adxl.setActivityThreshold(2); // 75?
+  adxl.setInactivityThreshold(2); // 75?
   adxl.setTimeInactivity(1);
   adxl.setActivityX(1);
   adxl.setActivityY(1);
@@ -153,10 +196,10 @@ void setup()
   IDLE
   NOALERT
   attachInterrupt(ADXL_INTR, adxlIntr, RISING);
-  attachInterrupt(BUTTON_INTR, buttonIntr, RISING);
+  //attachInterrupt(BUTTON_INTR, buttonIntr, RISING);
   taskAddWithSemaphore(movementHandler, &(call.adxlHandler));
+ // taskAddWithDelay(display, 100, &(call.display));
   adxl.readAccel(&adxlLast.x, &adxlLast.y, &adxlLast.z);
-  //taskAdd(displayHandler);
 }
 
 void loop()
