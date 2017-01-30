@@ -15,19 +15,21 @@
 #include <LiquidCrystal_I2C.h>
 #include <NeoPixelBus.h>
 
-#define MIN_ANGLE 10
-#define MIN_ACT 5
-#define PP 2
+#define MIN_ANGLE 10      // Accelerometer sensitivity
+#define MIN_ACT 5         // Acceleration time
+#define PP 2              // Movement events by LED
+#define SPLASH 10         // Splash frame time
 
-#define PIN_ACT       D4  //Net LED
-#define PIN_ALERT     D0  //16
+#define PIN_ACT       D4  //ESP-12 LED
+#define PIN_ALERT     D0  //NodeMCU LED
 #define BUSY          digitalWrite(PIN_ACT, LOW);
 #define IDLE          digitalWrite(PIN_ACT, HIGH);
 #define ALERT         digitalWrite(PIN_ALERT, LOW);
 #define NOALERT       digitalWrite(PIN_ALERT, HIGH);
 
-// Maximum brightness 0 - 255. Sure value below doesn't make sence.
+// Brightness 0 - 255
 #define BRI 24
+// Color brightness
 #define RC 64
 // Board height
 #define H 4
@@ -38,6 +40,7 @@ typedef ColumnMajorAlternatingLayout MyPanelLayout;
 typedef ColumnMajorLayout MyTilesLayout;
 NeoTiles <MyPanelLayout, MyTilesLayout>* tiles;
 
+// Brightness correction Class
 class BriColor : public RgbColor {
   public:
   BriColor(uint8_t r, uint8_t g, uint8_t b, uint8_t bri) {
@@ -74,6 +77,7 @@ handlers call = {0, 0, 0, 0, 0, 0};
 
 #define BUTTON_INTR 0
 
+// 
 #define ADXL_INTR 	12
 #define ADXL_HISTORY	20
 ADXL345 adxl;
@@ -227,7 +231,7 @@ uint32_t white() {
   splashColor.R = 1;
   splashColor.G = 0;
   splashColor.B = 0;  
-  taskAddWithDelay(newGame, 30);
+  taskAddWithDelay(newGame, SPLASH);
   return RUN_DELETE;
 }
 
@@ -236,12 +240,12 @@ uint32_t splash() {
     splashColor.R <<= 1;
     strip->ClearTo(splashColor);
     strip->Show();
-    return 30;
+    return SPLASH;
   } else {
     splashColor.R = 255;
     strip->ClearTo(splashColor);
     strip->Show();
-    taskAddWithDelay(white, 30);
+    taskAddWithDelay(white, SPLASH);
     return RUN_NEVER;
   }
 }
@@ -262,23 +266,24 @@ uint32_t display() {
 
 void setup()
 {
-    const uint8_t PanelWidth = W;
-    const uint8_t PanelHeight = H;
-    const uint8_t TileWidth = 1;
-    const uint8_t TileHeight = 1;
-    const uint16_t PixelCount = PanelWidth * PanelHeight * TileWidth * TileHeight;
+  const uint8_t PanelWidth = W;
+  const uint8_t PanelHeight = H;
+  const uint8_t TileWidth = 1;
+  const uint8_t TileHeight = 1;
+  const uint16_t PixelCount = PanelWidth * PanelHeight * TileWidth * TileHeight;
 
-    tiles = new NeoTiles <MyPanelLayout, MyTilesLayout> (PanelWidth,PanelHeight, TileWidth, TileHeight);
-    strip = new NeoPixelBus<NeoGrbFeature, NeoEsp8266Dma800KbpsMethod> (PixelCount);
-    strip->Begin();
-    strip->ClearTo(black);
-    strip->Show();
+  tiles = new NeoTiles <MyPanelLayout, MyTilesLayout> (PanelWidth,PanelHeight, TileWidth, TileHeight);
+  strip = new NeoPixelBus<NeoGrbFeature, NeoEsp8266Dma800KbpsMethod> (PixelCount);
+  strip->Begin();
+  strip->ClearTo(black);
+  strip->Show();
   
   Wire.begin();
   lcd.begin();
   lcd.setCursor(0,0);
   lcd.print("Hello");
   adxl.powerOn();
+  byte interrupts = adxl.getInterruptSource();
   adxl.setRangeSetting(2);
   adxl.setActivityThreshold(2); // 75?
   adxl.setInactivityThreshold(2); // 75?
@@ -298,7 +303,7 @@ void setup()
   adxl.setInterrupt( ADXL345_INT_DOUBLE_TAP_BIT, 1);
   adxl.setInterrupt( ADXL345_INT_FREE_FALL_BIT,  1);
   adxl.setInterrupt( ADXL345_INT_INACTIVITY_BIT, 1);
-  byte interrupts = adxl.getInterruptSource();
+  //byte interrupts = adxl.getInterruptSource();
   pinMode(D0, OUTPUT);
   pinMode(D4, OUTPUT);
   pinMode(ADXL_INTR, INPUT);
@@ -307,7 +312,8 @@ void setup()
   attachInterrupt(ADXL_INTR, adxlIntr, RISING);
   attachInterrupt(BUTTON_INTR, buttonIntr, RISING);
   taskAddWithSemaphore(movementHandler, &(call.adxlHandler));
-  taskAddWithDelay(display, 100, &(call.display));
+  taskAddWithSemaphore(display, &(call.display));
+  taskAdd(newGame);
   taskAddWithSemaphore(splash, &(call.splash));
   taskAddWithSemaphore(finish, &(call.finish));
   adxl.readAccel(&adxlLast.x, &adxlLast.y, &adxlLast.z);

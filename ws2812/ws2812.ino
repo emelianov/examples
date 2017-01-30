@@ -57,9 +57,9 @@ void SetRandomSeed()
 
 RgbColor black(0, 0, 0);
 
-bool flagGo = false;
-bool flagSwitchColor = false;
-bool flagShiftColor = false;
+uint16_t flagGo = 0;
+uint16_t flagSwitchColor = 0;
+uint16_t flagShiftColor = 0;
 
 uint32_t initialize() {
     const uint8_t PanelWidth = 4;  // 8 pixel x 8 pixel matrix of leds
@@ -74,7 +74,7 @@ uint32_t initialize() {
     strip->ClearTo(black);
     strip->Show();
     SetRandomSeed();
-    flagGo = true;
+    flagGo++;
     return RUN_DELETE;
 }
 
@@ -133,7 +133,7 @@ uint32_t switchColor() {
   b = newB;
   clr = BriColor(r, g, b, brightness);
   shiftFrame = 7;
-  flagShiftColor = true;
+  flagShiftColor++;
   return RUN_NEVER;  
 }
 
@@ -147,7 +147,7 @@ uint32_t go() {
   }
   if (posX >= H) {
     incX = -incX;
-    flagSwitchColor = true;
+    flagSwitchColor++;
     return RUN_NEVER;
   }
   return 250;
