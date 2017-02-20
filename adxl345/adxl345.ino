@@ -1,9 +1,8 @@
 ///////////////////////////////////////////////////////////////
-// ESP8266 AXDL345 + WS2812B + LCD (for debug only) example
+// ESP8266 AXDL345 + WS2812B example
 // (c)2017, a.m.emelianov@gmail.com
 //
 // Requrements:
-// https://github.com/fdebrabander/Arduino-LiquidCrystal-I2C-library
 // https://github.com/Makuna/NeoPixelBus
 // https://github.com/emelianov/ADXL345
 // https://github.com/emelianov/Run
@@ -12,13 +11,12 @@
 #include <Wire.h>
 #include <Run.h>
 #include <ADXL345.h>
-#include <LiquidCrystal_I2C.h>
 #include <NeoPixelBus.h>
 
 #define MIN_ANGLE 10      // Accelerometer sensitivity
 #define MIN_ACT 5         // Acceleration time
 #define PP 2              // Movement events by LED
-#define SPLASH 10         // Splash frame time
+#define SPLASH 30         // Splash frame time
 
 #define PIN_ACT       D4  //ESP-12 LED
 #define PIN_ALERT     D0  //NodeMCU LED
@@ -58,13 +56,6 @@ BriColor green( 0,64, 0, BRI);
 
 uint8_t brightness = BRI;
 
-// Display I2C address
-#define LCD_I2C 0x27
-#define LCD_W	16
-#define LCD_H	2
-LiquidCrystal_I2C lcd(LCD_I2C, LCD_W, LCD_H);
-
-
 struct handlers {
  uint16_t adxlHandler;
  uint16_t adxlZerroHandler;
@@ -76,9 +67,8 @@ struct handlers {
 handlers call = {0, 0, 0, 0, 0, 0};
 
 #define BUTTON_INTR 0
-
-// 
-#define ADXL_INTR 	12
+ 
+#define ADXL_INTR 	D6
 #define ADXL_HISTORY	20
 ADXL345 adxl;
 
@@ -105,10 +95,6 @@ void adxlIntr() {
  BUSY
 }
 void buttonIntr() {
-  //call.adxlZerroHandler++;
-  //adxlZerro.x = adxlLast.x;
-  //adxlZerro.y = adxlLast.y;
-  //adxlZerro.z = adxlLast.z;
   minAngle++;
   ALERT
 }
@@ -120,16 +106,6 @@ uint32_t movementHandler() {
   x = adxlLast.x - adxlZerro.x;
   y = adxlLast.y - adxlZerro.y;
   z = adxlLast.z - adxlZerro.z;
-  lcd.setCursor(0,0);
-  lcd.print("                ");
-  lcd.setCursor(0,0);
-  lcd.print(x);
-  lcd.print(" ");
-  lcd.print(y);
-  lcd.print(" ");
-  lcd.print(z);
-  lcd.setCursor(0,1);
-  lcd.print(taskCount);
   if (abs(x) > minAngle) {
     if (xAction != 0)  {
       if (millis() - xAction > MIN_ACT && call.die == 0) {
@@ -251,17 +227,11 @@ uint32_t splash() {
 }
 
 uint32_t display() {
-  //if (call.die > 0) {
-    //strip->ClearTo(splashColor);
-    //strip->Show();
-   // return RUN_NEVER;
-  //} else {
     strip->ClearTo(black);
     strip->SetPixelColor(tiles->Map(0, 0), green);
     strip->SetPixelColor(tiles->Map(bx >> PP, by >> PP), bc);
     strip->Show();
     return RUN_NEVER;
-  //}
 }
 
 void setup()
@@ -277,11 +247,16 @@ void setup()
   strip->Begin();
   strip->ClearTo(black);
   strip->Show();
+
+  pinMode(D0, OUTPUT);
+  pinMode(D4, OUTPUT);
+  pinMode(ADXL_INTR, INPUT);
+  IDLE
+  NOALERT
+  attachInterrupt(ADXL_INTR, adxlIntr, RISING);
+  attachInterrupt(BUTTON_INTR, buttonIntr, RISING);
   
   Wire.begin();
-  lcd.begin();
-  lcd.setCursor(0,0);
-  lcd.print("Hello");
   adxl.powerOn();
   byte interrupts = adxl.getInterruptSource();
   adxl.setRangeSetting(2);
@@ -303,14 +278,6 @@ void setup()
   adxl.setInterrupt( ADXL345_INT_DOUBLE_TAP_BIT, 1);
   adxl.setInterrupt( ADXL345_INT_FREE_FALL_BIT,  1);
   adxl.setInterrupt( ADXL345_INT_INACTIVITY_BIT, 1);
-  //byte interrupts = adxl.getInterruptSource();
-  pinMode(D0, OUTPUT);
-  pinMode(D4, OUTPUT);
-  pinMode(ADXL_INTR, INPUT);
-  IDLE
-  NOALERT
-  attachInterrupt(ADXL_INTR, adxlIntr, RISING);
-  attachInterrupt(BUTTON_INTR, buttonIntr, RISING);
   taskAddWithSemaphore(movementHandler, &(call.adxlHandler));
   taskAddWithSemaphore(display, &(call.display));
   taskAdd(newGame);
