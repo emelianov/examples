@@ -5,6 +5,7 @@
 ## ADXL345
 
 Simple game using WS2812 board as display and ADXL345 accelerometer as controls.
+
 [Video of game in action](https://www.instagram.com/p/BP7YtLjh0JA/?taken-by=talkingpipe)
 
 ## ws2812b
